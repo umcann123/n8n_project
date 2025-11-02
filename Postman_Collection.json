@@ -1,0 +1,79 @@
+{
+  "info": {
+    "name": "n8n Excel AI Classification",
+    "description": "測試 n8n Excel AI 分類工作流的 Postman Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Upload Excel and Classify",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "要上傳的 Excel 檔案 (.xlsx)"
+            },
+            {
+              "key": "fields",
+              "value": "title,content,description",
+              "type": "text",
+              "description": "要分析的欄位，用逗號分隔"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{webhook_url}}/classify-excel",
+          "host": ["{{webhook_url}}"],
+          "path": ["classify-excel"]
+        },
+        "description": "上傳 Excel 檔案並使用 AI 進行自動分類"
+      },
+      "response": []
+    },
+    {
+      "name": "Classify with Custom Fields",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "要上傳的 Excel 檔案"
+            },
+            {
+              "key": "fields",
+              "value": "title,description",
+              "type": "text",
+              "description": "只分析 title 和 description 欄位"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{webhook_url}}/classify-excel",
+          "host": ["{{webhook_url}}"],
+          "path": ["classify-excel"]
+        },
+        "description": "只使用特定欄位進行分類"
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "webhook_url",
+      "value": "https://your-n8n-instance.com/webhook",
+      "type": "string"
+    }
+  ]
+}
+

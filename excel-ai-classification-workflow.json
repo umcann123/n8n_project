@@ -1,0 +1,222 @@
+{
+  "name": "Excel AI Classification Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-excel",
+        "options": {
+          "responseMode": "responseNode"
+        }
+      },
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "excel-upload-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "extract-fields",
+              "name": "fields_to_analyze",
+              "value": "={{ $json.body.fields || 'title,content,description' }}",
+              "type": "string"
+            },
+            {
+              "id": "extract-file",
+              "name": "excel_file",
+              "value": "={{ $json.body.files || $json.binary }}",
+              "type": "any"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-params-node",
+      "name": "Extract Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "fromXLSX",
+        "options": {
+          "sheetName": "=",
+          "range": "=",
+          "options": {}
+        }
+      },
+      "id": "parse-excel-node",
+      "name": "Parse Excel",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 2.1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 提取指定字段进行AI分析\nconst fieldsToAnalyze = $input.item.json.fields_to_analyze.split(',').map(f => f.trim());\nconst excelData = $input.item.json.data || $input.item.json;\n\n// 如果是数组，处理每行数据\nlet dataArray = [];\nif (Array.isArray(excelData)) {\n  dataArray = excelData;\n} else if (excelData.data && Array.isArray(excelData.data)) {\n  dataArray = excelData.data;\n} else if (excelData.rows && Array.isArray(excelData.rows)) {\n  dataArray = excelData.rows;\n} else {\n  // 尝试将对象转换为数组\n  dataArray = [excelData];\n}\n\n// 为每行数据提取指定字段\nconst processedData = dataArray.map((row, index) => {\n  const extractedFields = {};\n  const fullRow = { ...row };\n  \n  fieldsToAnalyze.forEach(field => {\n    if (row[field] !== undefined) {\n      extractedFields[field] = row[field];\n    }\n  });\n  \n  // 组合所有指定字段的内容用于AI分析\n  const analysisText = fieldsToAnalyze\n    .map(field => `${field}: ${row[field] || ''}`)\n    .join('\\n');\n  \n  return {\n    originalIndex: index,\n    originalData: fullRow,\n    fieldsToAnalyze: extractedFields,\n    analysisText: analysisText,\n    rowNumber: index + 1\n  };\n});\n\nreturn processedData.map(item => ({ json: item }));"
+      },
+      "id": "extract-fields-node",
+      "name": "Extract Fields for Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "prepare-prompt",
+              "name": "prompt",
+              "value": "=你是一個數據分類專家。請分析以下用戶表單數據，自動決定最合適的分類類別數量（建議3-10類），並為每筆資料進行分類。\n\n數據內容：\n{{ $json.analysisText }}\n\n請遵循以下規則：\n1. 根據數據內容的特徵和相似性，自動決定分類數量和類別名稱\n2. 每個類別應該有清晰的定義和特徵\n3. 只返回分類結果，格式為：\n   - 分類類別名稱（簡潔明確，例如：專案管理、設備維修、儲存空間等）\n4. 只返回類別名稱，不需要額外說明\n\n請為這筆資料分類：",
+              "type": "string"
+            },
+            {
+              "id": "prepare-context",
+              "name": "originalData",
+              "value": "={{ $json.originalData }}",
+              "type": "object"
+            },
+            {
+              "id": "prepare-index",
+              "name": "rowNumber",
+              "value": "={{ $json.rowNumber }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-ai-node",
+      "name": "Prepare for AI",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.3,
+          "maxTokens": 500
+        },
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "你是一個專業的數據分類系統。根據用戶提供的數據內容，自動決定分類類別並進行分類。只返回分類類別名稱，不需要額外說明。"
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.prompt }}"
+            }
+          ]
+        }
+      },
+      "id": "ai-classify-node",
+      "name": "AI Classification",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.3,
+      "position": [1250, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "openai-api",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 提取AI分类结果并添加到原始数据\nconst aiResponse = $input.item.json.choices?.[0]?.message?.content || \n                  $input.item.json.message?.content ||\n                  $input.item.json.response ||\n                  $input.item.json.text ||\n                  '未分類';\n\n// 清理分类结果（移除可能的额外文本）\nlet category = aiResponse.trim();\n// 移除可能的引号\ncategory = category.replace(/^[\"']|[\"']$/g, '');\n// 只取第一行（如果是多行）\ncategory = category.split('\\n')[0].trim();\n\n// 获取原始数据\nconst originalData = $input.item.json.originalData || {};\n\n// 添加分类结果到新字段\nconst result = {\n  ...originalData,\n  category: category,\n  classification_result: category,\n  classified_at: new Date().toISOString()\n};\n\nreturn { json: result };"
+      },
+      "id": "merge-results-node",
+      "name": "Merge Classification Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 收集所有分类结果\nconst allResults = $input.all();\nconst results = allResults.map(item => item.json);\n\n// 统计分类信息\nconst categoryStats = {};\nresults.forEach(result => {\n  const category = result.category || result.classification_result || '未分類';\n  categoryStats[category] = (categoryStats[category] || 0) + 1;\n});\n\nreturn [{\n  json: {\n    totalRecords: results.length,\n    results: results,\n    categoryStatistics: categoryStats,\n    categories: Object.keys(categoryStats),\n    summary: `總共分類 ${results.length} 筆資料，分為 ${Object.keys(categoryStats).length} 個類別`\n  }\n}];"
+      },
+      "id": "aggregate-results-node",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "toXLSX",
+        "fileName": "classified_data_{{ $now.format('YYYY-MM-DD-HHmmss') }}.xlsx",
+        "options": {
+          "sheetName": "分類結果"
+        },
+        "binaryData": false,
+        "dataPropertyName": "results"
+      },
+      "id": "export-excel-node",
+      "name": "Export to Excel",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 2.1,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { success: true, totalRecords: $json.totalRecords, categories: $json.categories, categoryStatistics: $json.categoryStatistics, summary: $json.summary, downloadUrl: $binary.data } }}",
+        "options": {}
+      },
+      "id": "respond-node",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2050, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Extract Parameters", "type": "main", "index": 0 }]]
+    },
+    "Extract Parameters": {
+      "main": [[{ "node": "Parse Excel", "type": "main", "index": 0 }]]
+    },
+    "Parse Excel": {
+      "main": [[{ "node": "Extract Fields for Analysis", "type": "main", "index": 0 }]]
+    },
+    "Extract Fields for Analysis": {
+      "main": [[{ "node": "Prepare for AI", "type": "main", "index": 0 }]]
+    },
+    "Prepare for AI": {
+      "main": [[{ "node": "AI Classification", "type": "main", "index": 0 }]]
+    },
+    "AI Classification": {
+      "main": [[{ "node": "Merge Classification Result", "type": "main", "index": 0 }]]
+    },
+    "Merge Classification Result": {
+      "main": [[{ "node": "Aggregate Results", "type": "main", "index": 0 }]]
+    },
+    "Aggregate Results": {
+      "main": [[{ "node": "Export to Excel", "type": "main", "index": 0 }]]
+    },
+    "Export to Excel": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-01T00:00:00.000Z",
+  "versionId": "1"
+}
+

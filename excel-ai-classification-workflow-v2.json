@@ -1,0 +1,220 @@
+{
+  "name": "Excel AI Classification Workflow V2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "classify-excel",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "allEntries",
+          "responseMode": "lastNode"
+        }
+      },
+      "id": "webhook-receiver",
+      "name": "Webhook - Receive Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "webhookId": "excel-classification"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "field-1",
+              "name": "fields_to_analyze",
+              "value": "={{ $json.body?.fields || $json.query?.fields || 'title,content,description' }}",
+              "type": "string"
+            },
+            {
+              "id": "field-2",
+              "name": "file_data",
+              "value": "={{ $json.body?.file || $binary }}",
+              "type": "any"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-request-data",
+      "name": "Extract Request Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "operation": "fromXLSX",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "parse-excel-file",
+      "name": "Parse Excel File",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 2.1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 處理Excel數據並提取指定字段\nconst fieldsToAnalyze = $input.item.json.fields_to_analyze.split(',').map(f => f.trim());\nconst rawData = $input.item.json;\n\n// 處理不同的Excel解析格式\nlet dataRows = [];\n\nif (rawData.data && Array.isArray(rawData.data)) {\n  dataRows = rawData.data;\n} else if (rawData.rows && Array.isArray(rawData.rows)) {\n  dataRows = rawData.rows;\n} else if (Array.isArray(rawData)) {\n  dataRows = rawData;\n} else if (typeof rawData === 'object') {\n  // 單行數據\n  dataRows = [rawData];\n}\n\n// 為每行準備AI分析數據\nconst items = [];\n\nfor (let i = 0; i < dataRows.length; i++) {\n  const row = dataRows[i];\n  \n  // 提取指定字段的內容\n  const analysisFields = {};\n  const combinedText = [];\n  \n  fieldsToAnalyze.forEach(field => {\n    if (row[field] !== undefined && row[field] !== null && row[field] !== '') {\n      analysisFields[field] = String(row[field]);\n      combinedText.push(`${field}: ${row[field]}`);\n    }\n  });\n  \n  items.push({\n    json: {\n      rowIndex: i,\n      originalData: row,\n      analysisFields: analysisFields,\n      analysisText: combinedText.join('\\n'),\n      fieldsUsed: fieldsToAnalyze\n    }\n  });\n}\n\nreturn items;"
+      },
+      "id": "prepare-data-for-ai",
+      "name": "Prepare Data for AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ai-prompt",
+              "name": "ai_prompt",
+              "value": "=請分析以下用戶表單數據，自動決定最合適的分類類別數量（建議3-10類），並為這筆資料進行分類。\n\n數據內容：\n{{ $json.analysisText }}\n\n規則：\n1. 根據數據內容的特徵自動決定分類類別\n2. 只返回分類類別名稱（例如：專案管理、設備維修、儲存空間、軟體需求、網路問題、帳號管理、其他）\n3. 類別名稱要簡潔明確，不超過10個字\n4. 只返回類別名稱，不要額外說明\n\n分類結果：",
+              "type": "string"
+            },
+            {
+              "id": "keep-data",
+              "name": "row_data",
+              "value": "={{ $json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-ai-prompt",
+      "name": "Prepare AI Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"你是一個專業的數據分類系統。根據用戶提供的數據內容，自動決定分類類別並進行分類。只返回分類類別名稱，不需要額外說明或格式。\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"{{ $json.ai_prompt }}\"\n    }\n  ],\n  \"temperature\": 0.3,\n  \"max_tokens\": 50\n}",
+        "options": {}
+      },
+      "id": "call-openai-api",
+      "name": "Call OpenAI API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1240, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "openai-header-auth",
+          "name": "OpenAI API Key",
+          "type": "httpHeaderAuth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 處理AI回應並合併到原始數據\nconst aiResponse = $input.item.json;\nconst rowData = $input.item.json.row_data;\n\n// 提取分類結果\nlet category = '未分類';\n\ntry {\n  if (aiResponse.choices && aiResponse.choices[0] && aiResponse.choices[0].message) {\n    category = aiResponse.choices[0].message.content.trim();\n  } else if (aiResponse.message && aiResponse.message.content) {\n    category = aiResponse.message.content.trim();\n  } else if (typeof aiResponse === 'string') {\n    category = aiResponse.trim();\n  }\n  \n  // 清理分類結果\n  category = category.replace(/^[\"']|[\"']$/g, ''); // 移除引號\n  category = category.split('\\n')[0].trim(); // 只取第一行\n  category = category.replace(/^分類[結果:]?\\s*/i, '').trim(); // 移除「分類結果：」等前綴\n  \n  if (!category || category === '') {\n    category = '未分類';\n  }\n} catch (error) {\n  console.error('Error parsing AI response:', error);\n  category = '未分類';\n}\n\n// 合併原始數據和分類結果\nconst result = {\n  ...rowData.originalData,\n  category: category,\n  classification_result: category,\n  classified_at: new Date().toISOString(),\n  row_number: rowData.rowIndex + 1\n};\n\nreturn { json: result };"
+      },
+      "id": "merge-classification",
+      "name": "Merge Classification Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 彙總所有結果並統計\nconst allItems = $input.all();\nconst allResults = allItems.map(item => item.json);\n\n// 計算分類統計\nconst categoryStats = {};\nconst categoryList = [];\n\nallResults.forEach(result => {\n  const cat = result.category || result.classification_result || '未分類';\n  if (!categoryStats[cat]) {\n    categoryStats[cat] = 0;\n    categoryList.push(cat);\n  }\n  categoryStats[cat]++;\n});\n\n// 準備輸出\nconst output = {\n  totalRecords: allResults.length,\n  totalCategories: categoryList.length,\n  categories: categoryList,\n  categoryStatistics: categoryStats,\n  data: allResults,\n  summary: `成功分類 ${allResults.length} 筆資料，共 ${categoryList.length} 個類別`\n};\n\nreturn [{ json: output }];"
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 300]
+    },
+    {
+      "parameters": {
+        "operation": "toXLSX",
+        "fileName": "classified_results_{{ $now.toFormat('yyyy-MM-dd_HHmmss') }}.xlsx",
+        "options": {
+          "sheetName": "分類結果",
+          "headerRow": true
+        },
+        "binaryData": false,
+        "dataPropertyName": "data"
+      },
+      "id": "export-excel",
+      "name": "Export to Excel",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 2.1,
+      "position": [1840, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"success\": true,\n  \"summary\": $json.summary,\n  \"totalRecords\": $json.totalRecords,\n  \"totalCategories\": $json.totalCategories,\n  \"categories\": $json.categories,\n  \"categoryStatistics\": $json.categoryStatistics,\n  \"message\": \"分類完成！\"\n} }}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2040, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Receive Request": {
+      "main": [[{ "node": "Extract Request Data", "type": "main", "index": 0 }]]
+    },
+    "Extract Request Data": {
+      "main": [[{ "node": "Parse Excel File", "type": "main", "index": 0 }]]
+    },
+    "Parse Excel File": {
+      "main": [[{ "node": "Prepare Data for AI", "type": "main", "index": 0 }]]
+    },
+    "Prepare Data for AI": {
+      "main": [[{ "node": "Prepare AI Prompt", "type": "main", "index": 0 }]]
+    },
+    "Prepare AI Prompt": {
+      "main": [[{ "node": "Call OpenAI API", "type": "main", "index": 0 }]]
+    },
+    "Call OpenAI API": {
+      "main": [[{ "node": "Merge Classification Result", "type": "main", "index": 0 }]]
+    },
+    "Merge Classification Result": {
+      "main": [[{ "node": "Aggregate Results", "type": "main", "index": 0 }]]
+    },
+    "Aggregate Results": {
+      "main": [[{ "node": "Export to Excel", "type": "main", "index": 0 }]]
+    },
+    "Export to Excel": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-11-02T00:00:00.000Z",
+  "versionId": "1"
+}
+
