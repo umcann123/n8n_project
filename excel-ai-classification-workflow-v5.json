@@ -1,0 +1,317 @@
+{
+    "name": "Excel AI Classification Workflow V5 (Keyword + AI Hybrid)",
+    "nodes": [
+      {
+        "parameters": {
+          "formTitle": "Excel AI 分類 (關鍵詞+AI混合模式)",
+          "formFields": {
+            "values": [
+              {
+                "fieldLabel": "file",
+                "fieldType": "file"
+              },
+              {
+                "fieldLabel": "fields",
+                "placeholder": "請輸入要分析的欄位，\n用逗號分隔\n（例如：title,content,description）",
+                "requiredField": true
+              },
+              {
+                "fieldLabel": "categories",
+                "fieldType": "textarea",
+                "placeholder": "=請輸入類別和關鍵詞，每個種類別以換行隔開,格式：\n類別1:關鍵詞1,關鍵詞2\n類別2:關鍵詞3,關鍵詞4\n例如：\n專案管理:專案,項目,project\n設備維修:故障,壞掉,維修",
+                "requiredField": true
+              },
+              {
+                "fieldLabel": "batch_size",
+                "placeholder": "每批處理的資料筆數（預設：100）",
+                "requiredField": false
+              }
+            ]
+          },
+          "options": {
+            "customCss": ":root {\n\t--font-family: 'Open Sans', sans-serif;\n\t--font-weight-normal: 400;\n\t--font-weight-bold: 600;\n\t--font-size-body: 12px;\n\t--font-size-label: 14px;\n\t--font-size-test-notice: 12px;\n\t--font-size-input: 14px;\n\t--font-size-header: 20px;\n\t--font-size-paragraph: 14px;\n\t--font-size-link: 12px;\n\t--font-size-error: 12px;\n\t--font-size-html-h1: 28px;\n\t--font-size-html-h2: 20px;\n\t--font-size-html-h3: 16px;\n\t--font-size-html-h4: 14px;\n\t--font-size-html-h5: 12px;\n\t--font-size-html-h6: 10px;\n\t--font-size-subheader: 14px;\n\n\t/* Colors */\n\t--color-background: #fbfcfe;\n\t--color-test-notice-text: #e6a23d;\n\t--color-test-notice-bg: #fefaf6;\n\t--color-test-notice-border: #f6dcb7;\n\t--color-card-bg: #ffffff;\n\t--color-card-border: #dbdfe7;\n\t--color-card-shadow: rgba(99, 77, 255, 0.06);\n\t--color-link: #7e8186;\n\t--color-header: #525356;\n\t--color-label: #555555;\n\t--color-input-border: #dbdfe7;\n\t--color-input-text: #71747A;\n\t--color-focus-border: rgb(90, 76, 194);\n\t--color-submit-btn-bg: #ff6d5a;\n\t--color-submit-btn-text: #ffffff;\n\t--color-error: #ea1f30;\n\t--color-required: #ff6d5a;\n\t--color-clear-button-bg: #7e8186;\n\t--color-html-text: #555;\n\t--color-html-link: #ff6d5a;\n\t--color-header-subtext: #7e8186;\n\n\t/* Border Radii */\n\t--border-radius-card: 8px;\n\t--border-radius-input: 6px;\n\t--border-radius-clear-btn: 50%;\n\t--card-border-radius: 8px;\n\n\t/* Spacing */\n\t--padding-container-top: 24px;\n\t--padding-card: 24px;\n\t--padding-test-notice-vertical: 12px;\n\t--padding-test-notice-horizontal: 24px;\n\t--margin-bottom-card: 16px;\n\t--padding-form-input: 12px;\n\t--card-padding: 24px;\n\t--card-margin-bottom: 16px;\n\n\t/* Dimensions */\n\t--container-width: 448px;\n\t--submit-btn-height: 48px;\n\t--checkbox-size: 18px;\n\n\t/* Others */\n\t--box-shadow-card: 0px 4px 16px 0px var(--color-card-shadow);\n\t--opacity-placeholder: 0.5;\n}"
+          }
+        },
+        "type": "n8n-nodes-base.formTrigger",
+        "typeVersion": 2.2,
+        "position": [
+          80,
+          0
+        ],
+        "id": "5d36568a-3e96-4928-ad8f-7d153c0ed1eb",
+        "name": "On form submission",
+        "webhookId": "excel-classification-form-v5"
+      },
+      {
+        "parameters": {
+          "operation": "xlsx",
+          "binaryPropertyName": "file",
+          "options": {}
+        },
+        "id": "b6638bdd-3ef0-4b41-9522-f52717ea77c7",
+        "name": "Extract Excel Data",
+        "type": "n8n-nodes-base.extractFromFile",
+        "typeVersion": 1,
+        "position": [
+          288,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// 從表單提交獲取要分析的欄位和類別關鍵詞\nconst formData = $('On form submission').first().json;\nconst fieldsToAnalyze = (formData.fields || 'title,content,description').split(',').map(f => f.trim());\nconst categoriesInput = formData.categories || '';\nconst batchSize = parseInt(formData.batch_size) || 100;\n\n// 解析類別和關鍵詞\n// 格式：類別1:關鍵詞1,關鍵詞2|類別2:關鍵詞3,關鍵詞4\nconst categoryKeywords = {};\nconst categoryList = [];\n\nif (categoriesInput.trim()) {\n  try {\n    const categoryPairs = categoriesInput.split('\\n');\n    categoryPairs.forEach(pair => {\n      const trimmedPair = pair.trim();\n      if (trimmedPair) {\n        const [categoryName, keywordsStr] = trimmedPair.split(':');\n        if (categoryName && keywordsStr) {\n          const category = categoryName.trim();\n          const keywords = keywordsStr.split(',').map(k => k.trim()).filter(k => k);\n          if (category && keywords.length > 0) {\n            categoryKeywords[category] = keywords;\n            categoryList.push(category);\n          }\n        }\n      }\n    });\n  } catch (error) {\n    console.error('Error parsing categories:', error);\n  }\n}\n\n// 收集所有 Excel 資料行\nconst excelData = $input.all();\nconst totalRows = excelData.length;\n\n// 為所有數據準備分析\nconst allRowsData = excelData.map((item, index) => {\n  const row = item.json;\n  const analysisFields = {};\n  const analysisText = [];\n  \n  fieldsToAnalyze.forEach(field => {\n    if (row[field] !== undefined && row[field] !== null && row[field] !== '') {\n      analysisFields[field] = String(row[field]);\n      analysisText.push(`${field}: ${row[field]}`);\n    }\n  });\n  \n  // 將所有分析的文本合併成一個字串（用於關鍵詞匹配）\n  const combinedText = analysisText.join('\\n').toLowerCase();\n  \n  return {\n    rowIndex: index,\n    originalData: row,\n    analysisFields: analysisFields,\n    analysisText: analysisText.join('\\n'),\n    combinedText: combinedText,\n    fieldsUsed: fieldsToAnalyze\n  };\n});\n\nreturn [{\n  json: {\n    fieldsToAnalyze: fieldsToAnalyze,\n    categoryKeywords: categoryKeywords,\n    categoryList: categoryList,\n    totalRows: totalRows,\n    allRowsData: allRowsData,\n    batchSize: batchSize\n  }\n}];"
+        },
+        "id": "10b604a4-cd4b-43a2-816d-d2fb3664c34f",
+        "name": "Parse Categories and Keywords",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          480,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// 使用關鍵詞進行快速分類\nconst data = $input.item.json;\nconst categoryKeywords = data.categoryKeywords;\nconst categoryList = data.categoryList;\nconst allRowsData = data.allRowsData;\n\nconst keywordMatched = []; // 已通過關鍵詞匹配的資料\nconst unmatched = []; // 無法匹配的資料\n\nallRowsData.forEach(rowData => {\n  let matched = false;\n  let matchedCategory = null;\n  \n  // 檢查每個類別及其關鍵詞\n  for (const [category, keywords] of Object.entries(categoryKeywords)) {\n    // 檢查是否有任何關鍵詞出現在文本中\n    const found = keywords.some(keyword => {\n      const lowerKeyword = keyword.toLowerCase();\n      return rowData.combinedText.includes(lowerKeyword);\n    });\n    \n    if (found) {\n      matched = true;\n      matchedCategory = category;\n      break;\n    }\n  }\n  \n  if (matched && matchedCategory) {\n    // 關鍵詞匹配成功\n    keywordMatched.push({\n      ...rowData,\n      category: matchedCategory,\n      classification_method: 'keyword_match',\n      matched_keywords: categoryKeywords[matchedCategory].filter(k => \n        rowData.combinedText.includes(k.toLowerCase())\n      )\n    });\n  } else {\n    // 無法匹配，需要 AI 分類\n    unmatched.push(rowData);\n  }\n});\n\nreturn [{\n  json: {\n    keywordMatched: keywordMatched,\n    unmatched: unmatched,\n    categoryKeywords: categoryKeywords,\n    categoryList: categoryList,\n    totalRows: data.totalRows,\n    keywordMatchedCount: keywordMatched.length,\n    unmatchedCount: unmatched.length,\n    fieldsToAnalyze: data.fieldsToAnalyze\n  }\n}];"
+        },
+        "id": "8223643d-9013-4115-b51e-312437c376fa",
+        "name": "Keyword Classification",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          688,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// 為未匹配的資料準備 AI 分類提示詞（批量處理）\nconst data = $input.item.json;\nconst unmatched = data.unmatched;\nconst categoryKeywords = data.categoryKeywords;\nconst categoryList = data.categoryList;\n\n// 從表單獲取批次大小\nconst batchSize_user = $('On form submission').first().json.batch_size;\nconst batchSize = batchSize_user ? parseInt(batchSize_user) : 100;\n\n// 如果沒有未匹配的資料，直接返回空數組\nif (unmatched.length === 0) {\n  return [{\n    json: {\n      skipAI: true,\n      message: '所有資料已通過關鍵詞匹配分類'\n    }\n  }];\n}\n\n// 構建類別和關鍵詞的說明\nlet categoryDetails = '';\nif (categoryList.length > 0) {\n  categoryDetails = categoryList.map(category => {\n    const keywords = categoryKeywords[category] || [];\n    return `- ${category}: 關鍵詞包括 ${keywords.join('、')}`;\n  }).join('\\n');\n}\n\nconst batches = [];\n\n// 將未匹配的資料分成批次\nfor (let i = 0; i < unmatched.length; i += batchSize) {\n  const batch = unmatched.slice(i, i + batchSize);\n  batches.push(batch);\n}\n\n// 為每個批次準備分類提示詞\nconst batchItems = batches.map((batch, batchIndex) => {\n  // 構建批次數據表格\n  let dataTable = '編號 | 數據內容\\n';\n  dataTable += '--- | ---\\n';\n  \n  batch.forEach((rowData, idx) => {\n    const rowNumber = batchIndex * batchSize + idx + 1;\n    const content = rowData.analysisText.replace(/\\n/g, ' ').substring(0, 200); // 限制長度\n    dataTable += `${rowNumber} | ${content}\\n`;\n  });\n  \n  const prompt = `你是一個專業的數據分類系統。請分析以下批量數據，為每一筆數據進行分類。\n\n${categoryList.length > 0 ? `可用類別和關鍵詞參考：\\n${categoryDetails}\\n\\n如果數據包含上述關鍵詞或與類別描述相符，請選擇對應的類別。\\n\\n` : ''}數據列表（共 ${batch.length} 筆）：\\n${dataTable}\\n\\n規則：\\n1. ${categoryList.length > 0 ? `優先從上述類別中選擇最合適的類別` : '根據數據內容自動判斷合適的類別'}\\n2. 如果數據與任何現有類別都不符，請創建一個新的類別名稱（簡潔明確，不超過15個字）\\n3. 請以JSON格式返回分類結果，格式如下：\\n{\\n  \"results\": [\\n    { \"編號\": 1, \"類別\": \"類別名稱\" },\\n    { \"編號\": 2, \"類別\": \"類別名稱\" },\\n    ...\\n  ]\\n}\\n4. 只返回JSON格式，不要其他文字`;\n  \n  return {\n    json: {\n      batchIndex: batchIndex,\n      batchData: batch,\n      batchSize: batch.length,\n      prompt: prompt,\n      categoryKeywords: categoryKeywords,\n      categoryList: categoryList\n    }\n  };\n});\n\nreturn batchItems;"
+        },
+        "id": "ee1c134e-2934-4f29-a125-6130695cb418",
+        "name": "Prepare AI Classification",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          880,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.prompt }}",
+          "options": {
+            "systemMessage": "你是一個專業的數據分類系統。根據提供的類別參考和關鍵詞，將數據分類到最合適的類別。如果都不符合，可以創建新類別。只返回類別名稱，不要其他說明。"
+          }
+        },
+        "id": "3dcaf2ca-b7d8-4bfc-aa38-732d3466c83e",
+        "name": "AI Classify Rows",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 2.2,
+        "position": [
+          1088,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "value": "gpt-5-mini",
+            "mode": "id"
+          },
+          "options": {}
+        },
+        "id": "82ca33a7-21e3-4123-9c75-1333fa8b1594",
+        "name": "OpenAI GPT-5-mini",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.2,
+        "position": [
+          1088,
+          192
+        ],
+        "credentials": {
+          "openAiApi": {
+            "id": "ayV8Froxfuj94bRl",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "// 處理 AI 分類結果並合併（批量處理版本）\nconst allInputs = $input.all();\n\n// 檢查是否需要處理 AI 結果（可能第一個 item 是 skip 標記）\nif (allInputs.length === 1 && allInputs[0].json.skipAI) {\n  // 沒有 AI 分類結果，直接返回空數組（關鍵詞匹配的結果在另一個分支）\n  return [{\n    json: {\n      aiClassified: [],\n      skipAI: true\n    }\n  }];\n}\n\n// 獲取準備 AI 分類的原始數據（批次數據）\nconst prepareData = $('Prepare AI Classification').all();\n\n// 處理每個批次的 AI 分類結果\nconst allAiClassified = [];\n\nallInputs.forEach((inputItem, batchIndex) => {\n  const aiResponse = inputItem.json;\n  const batchInfo = prepareData[batchIndex] ? prepareData[batchIndex].json : null;\n  \n  if (!batchInfo || !batchInfo.batchData) {\n    console.error(`無法找到對應的批次資料 (batchIndex: ${batchIndex})`);\n    return;\n  }\n  \n  // 提取 AI 回應文本\n  let responseText = '';\n  \n  try {\n    if (aiResponse.output) {\n      responseText = aiResponse.output.trim();\n    } else if (aiResponse.text) {\n      responseText = aiResponse.text.trim();\n    } else if (aiResponse.message && aiResponse.message.content) {\n      responseText = aiResponse.message.content.trim();\n    } else if (typeof aiResponse === 'string') {\n      responseText = aiResponse.trim();\n    }\n    \n    // 提取 JSON 部分（移除可能的 markdown 代碼塊）\n    const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) {\n      const parsed = JSON.parse(jsonMatch[0]);\n      const results = parsed.results || [];\n      \n      // 將分類結果映射回原始資料\n      results.forEach(result => {\n        const itemNumber = result.編號 || result.number || result.id;\n        const category = result.類別 || result.category || result.class || '未分類';\n        \n        // 找到對應的原始資料（批次內的索引，編號是從1開始的）\n        const itemIndex = itemNumber - 1;\n        const rowData = batchInfo.batchData[itemIndex];\n        \n        if (rowData) {\n          allAiClassified.push({\n            json: {\n              ...rowData.originalData,\n              classification_result: category.trim() || '其他',\n              classification_method: 'ai',\n              classified_at: new Date().toISOString(),\n              row_number: rowData.rowIndex + 1\n            }\n          });\n        } else {\n          console.error(`無法找到對應的資料項 (itemNumber: ${itemNumber}, batchIndex: ${batchInfo.batchIndex})`);\n        }\n      });\n    } else {\n      // 如果無法解析 JSON，嘗試逐行解析（降級處理）\n      console.warn('無法解析 JSON 格式，嘗試逐行解析');\n      const lines = responseText.split('\\n').filter(line => line.trim());\n      batchInfo.batchData.forEach((rowData, idx) => {\n        const line = lines[idx] || '';\n        let category = '其他';\n        \n        // 嘗試從行中提取類別名稱\n        const categoryMatch = line.match(/[類別|category|class][:：]?\\s*([^\\n，,，]+)/i);\n        if (categoryMatch) {\n          category = categoryMatch[1].trim();\n        } else if (line.trim()) {\n          category = line.trim().replace(/^[0-9]+[.\\-\\s]*/, '').trim();\n        }\n        \n        allAiClassified.push({\n          json: {\n            ...rowData.originalData,\n            classification_result: category || '其他',\n            classification_method: 'ai',\n            classified_at: new Date().toISOString(),\n            row_number: rowData.rowIndex + 1\n          }\n        });\n      });\n    }\n  } catch (error) {\n    console.error(`Error parsing batch ${batchIndex} AI classification result:`, error);\n    // 如果解析失敗，為該批次的所有資料設置默認類別\n    batchInfo.batchData.forEach(rowData => {\n      allAiClassified.push({\n        json: {\n          ...rowData.originalData,\n          classification_result: '其他',\n          classification_method: 'ai',\n          classified_at: new Date().toISOString(),\n          row_number: rowData.rowIndex + 1\n        }\n      });\n    });\n  }\n});\n\nreturn [{ json: { aiClassified: allAiClassified } }];"
+        },
+        "id": "36b146a0-83bb-437c-94ed-327a42d537eb",
+        "name": "Merge AI Classification Results",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1344,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// 合併關鍵詞匹配和 AI 分類的所有結果\n// 從 Keyword Classification 節點獲取關鍵詞匹配的結果\nconst keywordData = $('Keyword Classification').first().json;\n\n// 從當前輸入（來自 Merge AI Classification Results）獲取 AI 分類的結果\nconst aiData = $input.item.json;\n\n// 獲取關鍵詞匹配的結果\nconst keywordMatched = keywordData.keywordMatched || [];\n\n// 獲取 AI 分類的結果\nconst aiClassified = aiData.skipAI ? [] : (aiData.aiClassified || []);\n\n// 將關鍵詞匹配的結果轉換為最終格式\nconst keywordResults = keywordMatched.map(item => ({\n  json: {\n    ...item.originalData,\n    classification_result: item.category,\n    classification_method: 'keyword_match',\n    matched_keywords: item.matched_keywords || [],\n    classified_at: new Date().toISOString(),\n    row_number: item.rowIndex + 1\n  }\n}));\n\n// 合併所有結果\nconst allResults = [...keywordResults, ...aiClassified];\n\n// 按原始索引排序（確保順序一致）\nallResults.sort((a, b) => (a.json.row_number || 0) - (b.json.row_number || 0));\n\nreturn allResults;"
+        },
+        "id": "b77f51eb-bab1-4c06-9703-e580dd0769d8",
+        "name": "Merge All Results",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1520,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "// 清理輸出數據，只保留原始欄位和 classification_result\nconst allItems = $input.all();\n\n// 獲取原始 Excel 的欄位名稱（從第一筆資料中獲取，排除我們添加的欄位）\nconst excludedFields = ['classification_method', 'matched_keywords', 'classified_at', 'row_number', 'category', 'error'];\n\nconst cleanedResults = allItems.map(item => {\n  const originalJson = item.json;\n  \n  // 獲取所有原始欄位（排除我們添加的欄位）\n  const originalFields = {};\n  Object.keys(originalJson).forEach(key => {\n    if (!excludedFields.includes(key)) {\n      originalFields[key] = originalJson[key];\n    }\n  });\n  \n  // 只保留原始欄位 + classification_result\n  return {\n    json: {\n      ...originalFields,\n      classification_result: originalJson.classification_result || '未分類'\n    }\n  };\n});\n\nreturn cleanedResults;"
+        },
+        "id": "ea698ad3-f172-4fa2-b686-e301e3d5458f",
+        "name": "Clean Output",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1680,
+          0
+        ]
+      },
+      {
+        "parameters": {
+          "operation": "xlsx",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.convertToFile",
+        "typeVersion": 1.1,
+        "position": [
+          1840,
+          0
+        ],
+        "id": "7bad779c-486f-483a-b0ff-4c24bcbcceab",
+        "name": "Export to Excel"
+      }
+    ],
+    "pinData": {},
+    "connections": {
+      "On form submission": {
+        "main": [
+          [
+            {
+              "node": "Extract Excel Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Extract Excel Data": {
+        "main": [
+          [
+            {
+              "node": "Parse Categories and Keywords",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Categories and Keywords": {
+        "main": [
+          [
+            {
+              "node": "Keyword Classification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Keyword Classification": {
+        "main": [
+          [
+            {
+              "node": "Prepare AI Classification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare AI Classification": {
+        "main": [
+          [
+            {
+              "node": "AI Classify Rows",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Classify Rows": {
+        "main": [
+          [
+            {
+              "node": "Merge AI Classification Results",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge AI Classification Results": {
+        "main": [
+          [
+            {
+              "node": "Merge All Results",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge All Results": {
+        "main": [
+          [
+            {
+              "node": "Clean Output",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Clean Output": {
+        "main": [
+          [
+            {
+              "node": "Export to Excel",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "OpenAI GPT-5-mini": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Classify Rows",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "active": false,
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "versionId": "44f6f8df-5323-442f-be79-3323563687bf",
+    "meta": {
+      "instanceId": "56b5afa3c9c4057cfb5084ee4ca81bb2f83bfb02209cf18a98194a9655074461"
+    },
+    "id": "ZMithLyqcxCnUR6k",
+    "tags": []
+  }

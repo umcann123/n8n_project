@@ -21,8 +21,11 @@
       },
       "type": "n8n-nodes-base.formTrigger",
       "typeVersion": 2.3,
-      "position": [240, 300],
-      "id": "form-trigger",
+      "position": [
+        688,
+        -272
+      ],
+      "id": "15955dd2-c415-480f-9a08-cd5bdf142146",
       "name": "On form submission",
       "webhookId": "excel-classification-form-v4"
     },
@@ -32,21 +35,27 @@
         "binaryPropertyName": "file",
         "options": {}
       },
-      "id": "extract-excel-data",
+      "id": "049e6bcc-fc3d-4b1b-a4ec-207ee63e1784",
       "name": "Extract Excel Data",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
-      "position": [440, 300]
+      "position": [
+        896,
+        -272
+      ]
     },
     {
       "parameters": {
         "jsCode": "// 從表單提交獲取要分析的欄位\nconst formData = $('On form submission').first().json;\nconst fieldsToAnalyze = (formData.fields || 'title,content,description').split(',').map(f => f.trim());\n\n// 收集所有 Excel 資料行\nconst excelData = $input.all();\nconst totalRows = excelData.length;\n\n// 階段1：取樣分析（取前200條或總數的20%，最多300條）\nconst sampleSize = Math.min(300, Math.max(100, Math.floor(totalRows * 0.2)));\nconst samples = excelData.slice(0, sampleSize);\n\n// 準備樣本數據用於建立分類體系\nlet sampleTable = '';\nif (samples.length > 0) {\n  const headers = fieldsToAnalyze.filter(f => {\n    return samples[0].json[f] !== undefined;\n  });\n  \n  // 創建表格標題\n  sampleTable += '編號 | ' + headers.join(' | ') + '\\n';\n  sampleTable += '--- | ' + headers.map(() => '---').join(' | ') + '\\n';\n  \n  // 添加樣本數據（限制每行長度避免過長）\n  samples.forEach((item, idx) => {\n    const row = [idx + 1];\n    headers.forEach(header => {\n      let value = String(item.json[header] || '');\n      // 限制每個字段的長度\n      if (value.length > 150) {\n        value = value.substring(0, 147) + '...';\n      }\n      row.push(value);\n    });\n    sampleTable += row.join(' | ') + '\\n';\n  });\n}\n\n// 階段1提示詞：分析樣本並建立分類體系\nconst categoryDefinitionPrompt = `你是一個專業的數據分類專家。以下是一批用戶表單數據的樣本（共 ${sampleSize} 筆，總共 ${totalRows} 筆數據）。\n\n請仔細分析這些樣本數據，然後：\n1. 根據數據的特徵和模式，決定最合適的分類類別體系（建議3-10個類別）\n2. 為每個類別提供清晰的名稱和定義\n3. 說明每個類別的特徵和判斷標準\n\n樣本數據：\n${sampleTable}\n\n請以以下JSON格式回應：\n{\n  \"categories\": [\n    {\n      \"name\": \"類別名稱\",\n      \"description\": \"類別描述\",\n      \"criteria\": \"判斷標準\"\n    }\n  ],\n  \"reasoning\": \"為什麼選擇這些類別的原因\"\n}\n\n只返回JSON格式，不要其他文字。`;\n\n// 為所有數據準備分類請求\nconst allRowsData = excelData.map((item, index) => {\n  const row = item.json;\n  const analysisFields = {};\n  const analysisText = [];\n  \n  fieldsToAnalyze.forEach(field => {\n    if (row[field] !== undefined && row[field] !== null && row[field] !== '') {\n      analysisFields[field] = String(row[field]);\n      analysisText.push(`${field}: ${row[field]}`);\n    }\n  });\n  \n  return {\n    rowIndex: index,\n    originalData: row,\n    analysisFields: analysisFields,\n    analysisText: analysisText.join('\\n'),\n    fieldsUsed: fieldsToAnalyze\n  };\n});\n\nreturn [{\n  json: {\n    stage: 'category_definition',\n    categoryDefinitionPrompt: categoryDefinitionPrompt,\n    sampleSize: sampleSize,\n    totalRows: totalRows,\n    fieldsToAnalyze: fieldsToAnalyze,\n    allRowsData: allRowsData\n  }\n}];"
       },
-      "id": "prepare-two-stage",
+      "id": "e9910cf5-3f96-465a-95e0-249c0b86bd70",
       "name": "Prepare Two-Stage Classification",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [640, 300]
+      "position": [
+        1088,
+        -272
+      ]
     },
     {
       "parameters": {
@@ -56,42 +65,27 @@
           "systemMessage": "你是一個專業的數據分類系統。仔細分析提供的樣本數據，建立合理的分類體系。只返回JSON格式的回應，不要其他文字。"
         }
       },
-      "id": "define-categories",
+      "id": "d641d8e2-6fe3-4ccf-9a5e-00b5dd0eaa13",
       "name": "Stage 1: Define Categories",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3,
-      "position": [840, 300]
-    },
-    {
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "id",
-          "value": "gpt-4o-mini"
-        },
-        "options": {}
-      },
-      "id": "openai-model",
-      "name": "OpenAI GPT-4o-mini",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [840, 480],
-      "credentials": {
-        "openAiApi": {
-          "id": "openai-api-credential",
-          "name": "OpenAI API"
-        }
-      }
+      "position": [
+        1296,
+        -272
+      ]
     },
     {
       "parameters": {
         "jsCode": "// 解析AI回傳的分類體系定義\nconst aiResponse = $input.item.json;\nconst originalData = $('Prepare Two-Stage Classification').first().json;\n\nlet categories = [];\nlet categoryNames = [];\n\n// 嘗試解析JSON回應\ntry {\n  let responseText = '';\n  \n  if (aiResponse.output) {\n    responseText = aiResponse.output;\n  } else if (aiResponse.text) {\n    responseText = aiResponse.text;\n  } else if (aiResponse.message && aiResponse.message.content) {\n    responseText = aiResponse.message.content;\n  } else if (typeof aiResponse === 'string') {\n    responseText = aiResponse;\n  }\n  \n  // 提取JSON部分（移除可能的markdown代碼塊）\n  const jsonMatch = responseText.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    const parsed = JSON.parse(jsonMatch[0]);\n    categories = parsed.categories || [];\n    categoryNames = categories.map(c => c.name);\n  } else {\n    // 如果解析失敗，使用默認類別\n    categories = [\n      { name: '專案管理', description: '與專案相關的操作', criteria: '包含專案創建、刪除、修改等' },\n      { name: '設備維修', description: '電腦或設備故障相關', criteria: '包含故障、維修、技術支援等' },\n      { name: '儲存空間', description: '儲存空間相關需求', criteria: '包含空間擴充、備份等' },\n      { name: '軟體需求', description: '軟體安裝或授權', criteria: '包含軟體申請、安裝等' },\n      { name: '網路問題', description: '網路相關問題', criteria: '包含連線、速度、權限等' },\n      { name: '帳號管理', description: '帳號相關操作', criteria: '包含密碼、權限等' },\n      { name: '其他', description: '其他未分類項目', criteria: '不符合以上類別' }\n    ];\n    categoryNames = categories.map(c => c.name);\n  }\n} catch (error) {\n  console.error('Error parsing category definition:', error);\n  // 使用默認類別\n  categories = [\n    { name: '專案管理', description: '與專案相關的操作', criteria: '包含專案創建、刪除、修改等' },\n    { name: '設備維修', description: '電腦或設備故障相關', criteria: '包含故障、維修、技術支援等' },\n    { name: '儲存空間', description: '儲存空間相關需求', criteria: '包含空間擴充、備份等' },\n    { name: '軟體需求', description: '軟體安裝或授權', criteria: '包含軟體申請、安裝等' },\n    { name: '網路問題', description: '網路相關問題', criteria: '包含連線、速度、權限等' },\n    { name: '帳號管理', description: '帳號相關操作', criteria: '包含密碼、權限等' },\n    { name: '其他', description: '其他未分類項目', criteria: '不符合以上類別' }\n  ];\n  categoryNames = categories.map(c => c.name);\n}\n\n// 為每筆資料準備分類提示詞（使用已建立的類別體系）\nconst categoryList = categoryNames.join('、');\nconst categoryDetails = categories.map(c => \n  `- ${c.name}: ${c.description}（判斷標準：${c.criteria}）`\n).join('\\n');\n\nconst items = originalData.allRowsData.map(rowData => {\n  const prompt = `請將以下數據分類到以下類別之一：\n\n可用類別：\n${categoryDetails}\n\n數據內容：\n${rowData.analysisText}\n\n規則：\n1. 必須從上述類別中選擇一個最合適的類別\n2. 只返回類別名稱，不要其他說明\n3. 如果不確定，選擇「其他」\n\n分類結果：`;\n  \n  return {\n    json: {\n      ...rowData,\n      prompt: prompt,\n      categorySystem: categories,\n      categoryNames: categoryNames\n    }\n  };\n});\n\nreturn items;"
       },
-      "id": "prepare-row-classification",
+      "id": "e2b25861-1f2c-4329-a394-5b427ec7623e",
       "name": "Stage 2: Prepare Row Classification",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1040, 300]
+      "position": [
+        1552,
+        -272
+      ]
     },
     {
       "parameters": {
@@ -101,83 +95,92 @@
           "systemMessage": "你是一個專業的數據分類系統。根據已建立的分類體系，將數據分類到最合適的類別。只返回類別名稱，不要其他說明。"
         }
       },
-      "id": "classify-rows",
+      "id": "2c43451e-2d0e-4a1e-96db-1b7aa1d33a46",
       "name": "Stage 2: Classify Each Row",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3,
-      "position": [1240, 300]
+      "position": [
+        1696,
+        -272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 處理分類結果並合併到原始數據\n// 從所有輸入 items 中處理（因為可能有多個 items）\nconst allInputs = $input.all();\nconst allPrepareData = $('Stage 2: Prepare Row Classification').all();\n\n// 為每個輸入 item 處理分類結果\nconst results = allInputs.map((inputItem, index) => {\n  const aiResponse = inputItem.json;\n  // 使用索引匹配原始資料（因為順序應該是一致的）\n  const rowData = allPrepareData[index] ? allPrepareData[index].json : null;\n\n  // 預設分類\n  let category = '未分類';\n\n  try {\n    let responseText = '';\n\n    // 嘗試從 AI 輸出中取出文字\n    if (aiResponse.output) {\n      responseText = aiResponse.output.trim();\n    } else if (aiResponse.text) {\n      responseText = aiResponse.text.trim();\n    } else if (aiResponse.message && aiResponse.message.content) {\n      responseText = aiResponse.message.content.trim();\n    } else if (typeof aiResponse === 'string') {\n      responseText = aiResponse.trim();\n    }\n\n    // 清理分類結果\n    category = responseText.replace(/^[\\\"']|[\\\"']$/g, '');\n    category = category.split('\\n')[0].trim();\n    category = category.replace(/^分類[結果:]?\\s*/i, '').trim();\n\n    // 驗證分類結果是否在既定的類別中\n    if (rowData && rowData.categoryNames && !rowData.categoryNames.includes(category)) {\n      // 嘗試模糊匹配\n      const matched = rowData.categoryNames.find(cat =>\n        category.includes(cat) || cat.includes(category)\n      );\n      category = matched ? matched : '其他';\n    }\n\n    if (!category || category === '') {\n      category = '其他';\n    }\n  } catch (error) {\n    console.error('Error parsing classification result:', error);\n    category = '其他';\n  }\n\n  // 若找不到對應的原始資料\n  if (!rowData) {\n    console.error(`無法找到對應的原始資料 (index: ${index})`);\n    return {\n      json: {\n        error: `無法找到對應的原始資料 (index: ${index})`,\n        category: '其他'\n      }\n    };\n  }\n\n  // 合併原始資料與分類結果\n  const result = {\n    ...rowData.originalData,\n    category: category,\n    classification_result: category,\n    classified_at: new Date().toISOString(),\n    row_number: rowData.rowIndex + 1\n  };\n\n  return { json: result };\n});\n\n// 返回所有處理後的結果\nreturn results;\n"
+      },
+      "id": "a2513975-79c3-4930-9e0e-0644930b78e4",
+      "name": "Merge Classification Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        -272
+      ]
     },
     {
       "parameters": {
         "model": {
           "__rl": true,
-          "mode": "id",
-          "value": "gpt-4o-mini"
+          "value": "gpt-5-mini",
+          "mode": "id"
         },
         "options": {}
       },
-      "id": "openai-model-2",
-      "name": "OpenAI GPT-4o-mini (Stage 2)",
+      "id": "923869b7-deef-44da-acec-83ab4acb4beb",
+      "name": "OpenAI GPT-5-mini (Stage 2)",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
-      "position": [1240, 480],
+      "position": [
+        1696,
+        -80
+      ],
       "credentials": {
         "openAiApi": {
-          "id": "openai-api-credential",
-          "name": "OpenAI API"
+          "id": "ayV8Froxfuj94bRl",
+          "name": "OpenAi account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "// 處理分類結果並合併到原始數據\nconst aiResponse = $input.item.json;\nconst rowData = $('Stage 2: Prepare Row Classification').item($runIndex).json;\n\n// 提取分類結果\nlet category = '未分類';\n\ntry {\n  let responseText = '';\n  \n  if (aiResponse.output) {\n    responseText = aiResponse.output.trim();\n  } else if (aiResponse.text) {\n    responseText = aiResponse.text.trim();\n  } else if (aiResponse.message && aiResponse.message.content) {\n    responseText = aiResponse.message.content.trim();\n  } else if (typeof aiResponse === 'string') {\n    responseText = aiResponse.trim();\n  }\n  \n  // 清理分類結果\n  category = responseText.replace(/^[\"']|[\"']$/g, '');\n  category = category.split('\\n')[0].trim();\n  category = category.replace(/^分類[結果:]?\\s*/i, '').trim();\n  \n  // 驗證分類結果是否在已定義的類別中\n  if (rowData.categoryNames && !rowData.categoryNames.includes(category)) {\n    // 嘗試模糊匹配\n    const matched = rowData.categoryNames.find(cat => \n      category.includes(cat) || cat.includes(category)\n    );\n    if (matched) {\n      category = matched;\n    } else {\n      category = '其他';\n    }\n  }\n  \n  if (!category || category === '') {\n    category = '其他';\n  }\n} catch (error) {\n  console.error('Error parsing classification result:', error);\n  category = '其他';\n}\n\n// 合併原始數據和分類結果\nconst result = {\n  ...rowData.originalData,\n  category: category,\n  classification_result: category,\n  classified_at: new Date().toISOString(),\n  row_number: rowData.rowIndex + 1\n};\n\nreturn { json: result };"
-      },
-      "id": "merge-results",
-      "name": "Merge Classification Results",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1440, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// 彙總所有分類結果並統計\nconst allItems = $input.all();\nconst allResults = allItems.map(item => item.json);\n\n// 計算分類統計\nconst categoryStats = {};\nconst categoryList = [];\n\nallResults.forEach(result => {\n  const cat = result.category || result.classification_result || '未分類';\n  if (!categoryStats[cat]) {\n    categoryStats[cat] = 0;\n    categoryList.push(cat);\n  }\n  categoryStats[cat]++;\n});\n\n// 獲取分類體系定義（從第一筆數據）\nconst categorySystem = allItems[0]?.json?.categorySystem || [];\n\nconst output = {\n  totalRecords: allResults.length,\n  totalCategories: categoryList.length,\n  categories: categoryList,\n  categoryStatistics: categoryStats,\n  categorySystem: categorySystem,\n  data: allResults,\n  summary: `成功分類 ${allResults.length} 筆資料，共 ${categoryList.length} 個類別`\n};\n\nreturn [{ json: output }];"
-      },
-      "id": "aggregate-results",
-      "name": "Aggregate Results",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1640, 300]
-    },
-    {
-      "parameters": {
-        "operation": "toXLSX",
-        "fileName": "classified_results_{{ $now.toFormat('yyyy-MM-dd_HHmmss') }}.xlsx",
-        "options": {
-          "sheetName": "分類結果",
-          "headerRow": true
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "id"
         },
-        "binaryData": false,
-        "dataPropertyName": "data"
-      },
-      "id": "export-excel",
-      "name": "Export to Excel",
-      "type": "n8n-nodes-base.convertToFile",
-      "typeVersion": 2.1,
-      "position": [1840, 300]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ {\n  \"success\": true,\n  \"summary\": $json.summary,\n  \"totalRecords\": $json.totalRecords,\n  \"totalCategories\": $json.totalCategories,\n  \"categories\": $json.categories,\n  \"categoryStatistics\": $json.categoryStatistics,\n  \"categorySystem\": $json.categorySystem,\n  \"message\": \"分類完成！使用了兩階段分類方法。\"\n} }}",
         "options": {}
       },
-      "id": "respond-to-form",
-      "name": "Respond to Form",
-      "type": "n8n-nodes-base.respondToWebhook",
+      "id": "e5db5bc3-6c74-4569-8545-efb9df8182dd",
+      "name": "OpenAI GPT-5-mini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1296,
+        -80
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "ayV8Froxfuj94bRl",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
       "typeVersion": 1.1,
-      "position": [2040, 300]
+      "position": [
+        2336,
+        -272
+      ],
+      "id": "ffdf9a8a-06a2-48ea-ad04-a33cf12bd24f",
+      "name": "Convert to File"
     }
   ],
+  "pinData": {},
   "connections": {
     "On form submission": {
       "main": [
@@ -223,17 +226,6 @@
         ]
       ]
     },
-    "OpenAI GPT-4o-mini": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Stage 1: Define Categories",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Stage 2: Prepare Row Classification": {
       "main": [
         [
@@ -256,7 +248,18 @@
         ]
       ]
     },
-    "OpenAI GPT-4o-mini (Stage 2)": {
+    "Merge Classification Results": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI GPT-5-mini (Stage 2)": {
       "ai_languageModel": [
         [
           {
@@ -267,48 +270,27 @@
         ]
       ]
     },
-    "Merge Classification Results": {
-      "main": [
+    "OpenAI GPT-5-mini": {
+      "ai_languageModel": [
         [
           {
-            "node": "Aggregate Results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Aggregate Results": {
-      "main": [
-        [
-          {
-            "node": "Export to Excel",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Export to Excel": {
-      "main": [
-        [
-          {
-            "node": "Respond to Form",
-            "type": "main",
+            "node": "Stage 1: Define Categories",
+            "type": "ai_languageModel",
             "index": 0
           }
         ]
       ]
     }
   },
-  "pinData": {},
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 0,
-  "updatedAt": "2024-11-02T00:00:00.000Z",
-  "versionId": "1"
+  "versionId": "b837122f-5949-4985-ab1e-4f87f60064cb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "56b5afa3c9c4057cfb5084ee4ca81bb2f83bfb02209cf18a98194a9655074461"
+  },
+  "id": "94zNtYyq1z62plnz",
+  "tags": []
 }
-
